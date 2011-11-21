@@ -5,9 +5,9 @@ import (
 	"bufio"
 	"os"
 	"log"
-	"crypto/md5"
 	"flag"
 	"fmt"
+	"md5"
 )
 
 // WsumBuf
@@ -90,9 +90,7 @@ func SumTableOf(r io.Reader, l int) *SumTable {
 			m = make(map[string] int)
 			t.table[ws] = m
 		}
-		ms := md5.New()
-		ms.Write(w.buf[:w.blen])
-		s := string(ms.Sum())
+		s := string(md5.Md5(w.buf[:w.blen]))
 		if _, ok := m[s]; !ok {
 			m[s] = i
 		}
@@ -110,10 +108,10 @@ func (t *SumTable) Get(buf []byte, blen int) (int, bool) {
 func (t *SumTable) GetWsumBuf(w *WsumBuf) (int, bool) {
 	m, ok := t.table[w.Wsum()]
 	if !ok { return 0, ok }
-	ms := md5.New()
-	ms.Write(w.buf[w.idx:w.blen])
-	ms.Write(w.buf[:w.idx])
-	s, ok := m[string(ms.Sum())]
+	sb := make([]byte, 0, w.blen)
+	sb = append(sb, w.buf[w.idx:w.blen]...)
+	sb = append(sb, w.buf[:w.idx]...)
+	s, ok := m[string(md5.Md5(sb))]
 	return s, ok
 }
 
