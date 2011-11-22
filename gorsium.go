@@ -108,10 +108,7 @@ func (t *SumTable) Get(buf []byte, blen int) (int, bool) {
 func (t *SumTable) GetWsumBuf(w *WsumBuf) (int, bool) {
 	m, ok := t.table[w.Wsum()]
 	if !ok { return 0, ok }
-	sb := make([]byte, 0, w.blen)
-	sb = append(sb, w.buf[w.idx:w.blen]...)
-	sb = append(sb, w.buf[:w.idx]...)
-	s, ok := m[string(md5.Md5(sb))]
+	s, ok := m[string(md5.Md5_2(w.buf[w.idx:w.blen], w.buf[:w.idx]))]
 	return s, ok
 }
 
