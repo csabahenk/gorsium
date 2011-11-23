@@ -8,6 +8,7 @@
 
 void get_md5_2(uchar *out, const uchar *input1, int n1, const uchar *input2, int n2)
 {
+#ifdef MDEBUG
 	char *dbgs = NULL;
 	int dbg = 0;
 
@@ -19,6 +20,7 @@ void get_md5_2(uchar *out, const uchar *input1, int n1, const uchar *input2, int
 		write(2, input1, n1);
 		write(2, input2, n2);
 	}
+#endif
 
 	md_context ctx;
 	md5_begin(&ctx);
@@ -26,8 +28,10 @@ void get_md5_2(uchar *out, const uchar *input1, int n1, const uchar *input2, int
 	md5_update(&ctx, input2, n2);
 	md5_result(&ctx, out);
 
+#ifdef MDEBUG
 	if (dbg)
 		write(2, out, 16);
+#endif
 }
 
 

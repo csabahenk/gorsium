@@ -214,6 +214,7 @@ void md5_result(md_context *ctx, uchar digest[MD5_DIGEST_LEN])
 
 void get_md5(uchar *out, const uchar *input, int n)
 {
+#ifdef MDEBUG
 	char *dbgs = NULL;
 	int dbg = 0;
 
@@ -224,14 +225,17 @@ void get_md5(uchar *out, const uchar *input, int n)
 		write(2, out, 16);
 		write(2, input, n);
 	}
+#endif
 
 	md_context ctx;
 	md5_begin(&ctx);
 	md5_update(&ctx, input, n);
 	md5_result(&ctx, out);
 
+#ifdef MDEBUG
 	if (dbg)
 		write(2, out, 16);
+#endif
 }
 
 #ifdef TEST_MD5
