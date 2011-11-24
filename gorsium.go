@@ -4,9 +4,10 @@ import (
 	"io"
 	"bufio"
 	"os"
-	"log"
 	"flag"
 	"fmt"
+	"path"
+	"io/ioutil"
 	"md5"
 )
 
@@ -82,7 +83,7 @@ func SumTableOf(r io.Reader, l int) *SumTable {
 	w := NewWsumBuf(make([]byte, l), 0)
 	for i := 0 ;; i++ {
 		err := w.Fill(r)
-		if err != nil && err != os.EOF { log.Fatal(err) }
+		if err != nil && err != os.EOF { fail(err) }
 		if w.blen == 0 { break }
 		ws := w.Wsum()
 		m, ok := t.table[ws]
@@ -196,19 +197,76 @@ func Patch(outf io.Writer, basef io.ReaderAt, d *delta) (err os.Error) {
 }
 
 
+type fatal struct {
+	err interface{}
+}
+
+func fail(err interface{}) {
+	panic(fatal{err})
+}
+
+func handleFatal() {
+	if err := recover(); err != nil {
+		if f, ok := err.(fatal); ok {
+			fmt.Println(f.err)
+			os.Exit(1)
+		}
+		panic(err)
+	}
+}
+
 func main() {
+	defer handleFatal()
+
+	flag.Usage = func() {
+		fmt.Fprintf(os.Stderr, "%s [options] <src> <tgt-base> [<tgt>]\nOptions can be:\n", os.Args[0])
+		flag.PrintDefaults()
+	}
 	blocksize := flag.Int("blocksize", 4096, "blocksize used in rsync algorithm")
+	backup := flag.Bool("backup", false, "backup original of target file")
 	debug := flag.Bool("debug", false, "debug mode")
 	flag.Parse()
 
-	basef0, err := os.Open(flag.Args()[0])
-	if err != nil { log.Fatal(err) }
-	basef, err := bufio.NewReaderSize(basef0, *blocksize)
-	if err != nil { log.Fatal(err) }
+	var basep string
+	var tgtf *os.File
+	var err os.Error
+	switch len(flag.Args()) {
+	case 2:
+		basep = flag.Args()[1]
+		tdir, tname := path.Split(basep)
+		tgtf, err = ioutil.TempFile(tdir, tname + ".")
+		if err != nil { fail(err) }
+		defer func() {
+			errl := err
+			if errl == nil && *backup { errl = os.Rename(basep, basep + "~") }
+			if errl == nil {
+				errl = os.Rename(tgtf.Name(), basep)
+			} else {
+				os.Remove(tgtf.Name())
+			}
+			if err == nil && errl != nil { fail(errl) }
+		}()
+	case 3:
+		basep = flag.Args()[1]
+		tgtf, err = os.OpenFile(flag.Args()[2], os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0)
+		if err != nil { fail(err) }
+	default:
+		flag.Usage()
+		os.Exit(2)
+	}
+
+	basef0, err := os.Open(basep)
+	if err != nil { fail(err) }
+	var basef *bufio.Reader
+	basef, err = bufio.NewReaderSize(basef0, *blocksize)
+	if err != nil { fail(err) }
 
 	t := SumTableOf(basef, *blocksize)
-	in := bufio.NewReader(os.Stdin)
-	d, err := t.Delta(in)
+	var srcf0 *os.File
+	srcf0, err = os.Open(flag.Args()[0])
+	if err != nil { fail(err) }
+	var d delta
+	d, err = t.Delta(bufio.NewReader(srcf0))
 
 	if (*debug) {
 		for _, e := range d {
@@ -225,8 +283,14 @@ func main() {
 	}
 
 	if err == nil {
-		err = Patch(os.Stdout, basef0, &d)
+		err = Patch(tgtf, basef0, &d)
 	}
 
-	if err != nil { log.Fatal(err) }
+	if err != nil { fail(err) }
+
+	var fi *os.FileInfo
+	fi, err = srcf0.Stat()
+	if err != nil { fail(err) }
+	err = tgtf.Chmod(fi.Permission())
+	if err != nil { fail(err) }
 }
