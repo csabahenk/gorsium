@@ -13,6 +13,7 @@ import (
 
 func main() {
 	defer fatal.HandleFatal()
+	done := false
 
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "%s [options] <src> <tgt-base> [<tgt>]\nOptions can be:\n", os.Args[0])
@@ -33,14 +34,20 @@ func main() {
 		tgtf, err = ioutil.TempFile(tdir, tname + ".")
 		if err != nil { fatal.Fail(err) }
 		defer func() {
-			errl := err
-			if errl == nil && *backup { errl = os.Rename(basep, basep + "~") }
-			if errl == nil {
-				errl = os.Rename(tgtf.Name(), basep)
-			} else {
+			var err os.Error
+			if done { // sync terminated successfully, doing the final renames
+				if *backup { err = os.Rename(basep, basep + "~") }
+				if err == nil { err = os.Rename(tgtf.Name(), basep) }
+			}
+			if !done || err != nil { // either sync failed or renames failed, just do an emergency cleanup
 				os.Remove(tgtf.Name())
 			}
-			if err == nil && errl != nil { fatal.Fail(errl) }
+			if done && err != nil { // sync terminated but renames failed, raise the error
+				fatal.Fail(err)
+			}
+			// either both sync and renames terminated successfully, then nothing to do,
+			// or sync has failed, then we called from panic context, so that's taken care of,
+			// nothing to do.
 		}()
 	case 3:
 		basep = flag.Args()[1]
@@ -53,16 +60,13 @@ func main() {
 
 	basef0, err := os.Open(basep)
 	if err != nil { fatal.Fail(err) }
-	var basef *bufio.Reader
-	basef, err = bufio.NewReaderSize(basef0, *blocksize)
+	basef, err := bufio.NewReaderSize(basef0, *blocksize)
 	if err != nil { fatal.Fail(err) }
 
 	t := rsync.SumTableOf(basef, *blocksize)
-	var srcf0 *os.File
-	srcf0, err = os.Open(flag.Args()[0])
+	srcf0, err := os.Open(flag.Args()[0])
 	if err != nil { fatal.Fail(err) }
-	var d rsync.Delta
-	d, err = t.Delta(bufio.NewReader(srcf0))
+	d, err := t.Delta(bufio.NewReader(srcf0))
 
 	if (*debug) {
 		for _, e := range d {
@@ -84,9 +88,10 @@ func main() {
 
 	if err != nil { fatal.Fail(err) }
 
-	var fi *os.FileInfo
-	fi, err = srcf0.Stat()
+	fi, err := srcf0.Stat()
 	if err != nil { fatal.Fail(err) }
 	err = tgtf.Chmod(fi.Permission())
 	if err != nil { fatal.Fail(err) }
+
+	done = true
 }
