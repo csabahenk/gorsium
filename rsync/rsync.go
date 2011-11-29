@@ -80,6 +80,7 @@ func NewSumTable(blen int) *SumTable {
 
 func SumTableOf(r io.Reader, l int) *SumTable {
 	t := NewSumTable(l)
+	if r == nil { return t }
 
 	w := NewWsumBuf(make([]byte, l), 0)
 	for i := 0 ;; i++ {

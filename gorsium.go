@@ -9,6 +9,7 @@ import (
 	"io/ioutil"
 	"rsync"
 	"fatal"
+	"io"
 )
 
 func main() {
@@ -25,6 +26,7 @@ func main() {
 	flag.Parse()
 
 	var basep string
+	var basef io.Reader
 	var tgtf *os.File
 	var err os.Error
 	switch len(flag.Args()) {
@@ -36,7 +38,7 @@ func main() {
 		defer func() {
 			var err os.Error
 			if done { // sync terminated successfully, doing the final renames
-				if *backup { err = os.Rename(basep, basep + "~") }
+				if *backup && basef != nil { err = os.Rename(basep, basep + "~") }
 				if err == nil { err = os.Rename(tgtf.Name(), basep) }
 			}
 			if !done || err != nil { // either sync failed or renames failed, just do an emergency cleanup
@@ -59,8 +61,11 @@ func main() {
 	}
 
 	basef0, err := os.Open(basep)
-	if err != nil { fatal.Fail(err) }
-	basef, err := bufio.NewReaderSize(basef0, *blocksize)
+	if err == nil {
+		basef, err = bufio.NewReaderSize(basef0, *blocksize)
+	} else if perr, ok := err.(*os.PathError); ok && perr.Error == os.ENOENT {
+		err = nil
+	}
 	if err != nil { fatal.Fail(err) }
 
 	t := rsync.SumTableOf(basef, *blocksize)
