@@ -5,75 +5,42 @@ import (
 	"os"
 	"flag"
 	"fmt"
-	"path"
-	"io/ioutil"
+	"log"
+	"strings"
+	"exec"
+	"rpc"
+	"gob"
 	"rsync"
 	"fatal"
-	"io"
 )
 
-func main() {
-	defer fatal.HandleFatal()
-	done := false
+var debug *bool
 
-	flag.Usage = func() {
-		fmt.Fprintf(os.Stderr, "%s [options] <src> <tgt-base> [<tgt>]\nOptions can be:\n", os.Args[0])
-		flag.PrintDefaults()
-	}
-	blocksize := flag.Int("blocksize", 4096, "blocksize used in rsync algorithm")
-	backup := flag.Bool("backup", false, "backup original of target file")
-	debug := flag.Bool("debug", false, "debug mode")
-	flag.Parse()
+func syncFile(cli *rpc.Client, file string) {
+	var t *rsync.SumTable
 
-	var basep string
-	var basef io.Reader
-	var tgtf *os.File
-	var err os.Error
-	switch len(flag.Args()) {
-	case 2:
-		basep = flag.Args()[1]
-		tdir, tname := path.Split(basep)
-		tgtf, err = ioutil.TempFile(tdir, tname + ".")
-		if err != nil { fatal.Fail(err) }
-		defer func() {
-			var err os.Error
-			if done { // sync terminated successfully, doing the final renames
-				if *backup && basef != nil { err = os.Rename(basep, basep + "~") }
-				if err == nil { err = os.Rename(tgtf.Name(), basep) }
-			}
-			if !done || err != nil { // either sync failed or renames failed, just do an emergency cleanup
-				os.Remove(tgtf.Name())
-			}
-			if done && err != nil { // sync terminated but renames failed, raise the error
-				fatal.Fail(err)
-			}
-			// either both sync and renames terminated successfully, then nothing to do,
-			// or sync has failed, then we called from panic context, so that's taken care of,
-			// nothing to do.
-		}()
-	case 3:
-		basep = flag.Args()[1]
-		tgtf, err = os.OpenFile(flag.Args()[2], os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0)
-		if err != nil { fatal.Fail(err) }
-	default:
-		flag.Usage()
-		os.Exit(2)
-	}
+	err := cli.Call("Server.Sumtable", file, &t)
+	defer func() {
+		var stat interface {}
+		if err == nil {
+			stat = "OK"
+		} else {
+			stat = err
+		}
+		// XXX to make output parsing possible,
+		// we should make sure error is printed
+		// as single line
+		fmt.Println(file + ":", stat)
+	}()
+	if err != nil { return }
 
-	basef0, err := os.Open(basep)
-	if err == nil {
-		basef, err = bufio.NewReaderSize(basef0, *blocksize)
-	} else if perr, ok := err.(*os.PathError); ok && perr.Error == os.ENOENT {
-		err = nil
-	}
-	if err != nil { fatal.Fail(err) }
-
-	t := rsync.SumTableOf(basef, *blocksize)
-	srcf0, err := os.Open(flag.Args()[0])
-	if err != nil { fatal.Fail(err) }
+	srcf0, err := os.Open(file)
+	if err != nil { return }
 	d, err := t.Delta(bufio.NewReader(srcf0))
+	if err != nil { return }
 
 	if (*debug) {
+		fmt.Fprintln(os.Stderr, file + ":")
 		for _, e := range d {
 			switch et := e.(type) {
 			case rsync.Byterange:
@@ -87,16 +54,112 @@ func main() {
 		fmt.Fprint(os.Stderr, "\n\n")
 	}
 
-	if err == nil {
-		err = rsync.Patch(tgtf, basef0, &d)
+	fi, err := srcf0.Stat()
+	if err != nil { return }
+	var x interface {}
+	err = cli.Call("Server.Patch",
+	               &rsync.PatchArg{Basep: file,
+	                               Delta: d,
+	                               Uid: fi.Uid, Gid: fi.Gid,
+	                               Permission: fi.Permission()},
+	               &x)
+}
+
+const (
+	SND = "SEND"
+	RCV = "RECEIVE"
+)
+
+func main() {
+	defer fatal.HandleFatal()
+	gob.Register(rsync.Byterange{})
+
+	flag.Usage = func() {
+		fmt.Fprintf(os.Stderr, "%s [options] <remote-cmd> [<file> ...] %s <base>\n", os.Args[0], SND)
+		fmt.Fprintf(os.Stderr, "%s [options] %s <base>\n", os.Args[0], RCV)
+		fmt.Fprintln(os.Stderr, "Options can be:")
+		flag.PrintDefaults()
+	}
+	blocksize := flag.Int("blocksize", 4096, "blocksize used in rsync algorithm")
+	zerosep := flag.Bool("0", false, "separate file names read on stdin by zero byte")
+	argsep := flag.String("argsep", "--", "string to separate remote command from file args")
+	debug = flag.Bool("debug", false, "debug mode")
+	flag.Parse()
+	args := flag.Args()
+
+	if len(args) < 2 {
+		flag.Usage()
+		os.Exit(2)
 	}
 
+	log.SetPrefix(args[len(args) - 2] + " ")
+	err := os.Chdir(args[len(args) - 1])
 	if err != nil { fatal.Fail(err) }
 
-	fi, err := srcf0.Stat()
-	if err != nil { fatal.Fail(err) }
-	err = tgtf.Chmod(fi.Permission())
-	if err != nil { fatal.Fail(err) }
+	switch args[len(args) - 2] {
+	case RCV:
+		rpc.Register(rsync.NewServer(*blocksize))
+		rsync.Serve(os.Stdin, os.Stdout)
 
-	done = true
+		return
+	case SND:
+	default:
+		fatal.Fail("unkown mode")
+	}
+
+	args = args[:len(args) - 2]
+	if len(args) < 1 {
+		flag.Usage()
+		os.Exit(2)
+	}
+
+	var remcmdargs, files []string
+	for i, arg := range args {
+		if arg == *argsep {
+			remcmdargs = args[:i]
+			files = args[i+1:]
+			break
+		}
+	}
+
+	if remcmdargs == nil {
+		remcmdargs0 := strings.Split(args[0], " ")
+		//collapse entries coming from subsequent spaces
+		for _, a := range(remcmdargs0) {
+			if len(a) != 0 {
+				remcmdargs = append(remcmdargs, a)
+			}
+		}
+		files = args[1:]
+	}
+
+	remcmd := exec.Command(remcmdargs[0], remcmdargs[1:]...)
+	remin, err := remcmd.StdinPipe()
+	if err != nil { fatal.Fail(err) }
+	remout, err := remcmd.StdoutPipe()
+	if err != nil { fatal.Fail(err) }
+	remcmd.Stderr = os.Stderr
+	err = remcmd.Start()
+	if err != nil { fatal.Fail(err) }
+	go func() {
+		err := remcmd.Wait()
+		fatal.Fail(fmt.Sprint("remote end hang up with error", err))
+	}()
+
+	client := rsync.Client(remout, remin)
+
+	if len(files) == 0 {
+		var sepchar byte
+		sepchar = '\n'
+		if *zerosep { sepchar = '\x00' }
+		r := bufio.NewReader(os.Stdin)
+		for {
+			fp, err := r.ReadString(sepchar)
+			if err == os.EOF { break }
+			if err != nil { fatal.Fail(err) }
+			syncFile(client, fp[:len(fp)-1])
+		}
+	} else {
+		for _, fp := range(files) { syncFile(client, fp) }
+	}
 }

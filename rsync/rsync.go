@@ -9,7 +9,6 @@ import (
 	"bufio"
 	"os"
 	"md5"
-	"fatal"
 )
 
 // WsumBuf
@@ -68,30 +67,30 @@ func (w *WsumBuf) Update(c byte) byte {
 // SumTable
 
 type SumTable struct {
-	blen  int
-	table map[uint32] map[string] int
+	Blen  int
+	Table map[uint32] map[string] int
 }
 
 func NewSumTable(blen int) *SumTable {
-	t := SumTable{blen: blen}
-	t.table = make(map[uint32] map[string] int)
+	t := SumTable{Blen: blen}
+	t.Table = make(map[uint32] map[string] int)
 	return &t
 }
 
-func SumTableOf(r io.Reader, l int) *SumTable {
+func SumTableOf(r io.Reader, l int) (*SumTable, os.Error) {
 	t := NewSumTable(l)
-	if r == nil { return t }
+	if r == nil { return t, nil }
 
 	w := NewWsumBuf(make([]byte, l), 0)
 	for i := 0 ;; i++ {
 		err := w.Fill(r)
-		if err != nil && err != os.EOF { fatal.Fail(err) }
+		if err != nil && err != os.EOF { return nil, err }
 		if w.blen == 0 { break }
 		ws := w.Wsum()
-		m, ok := t.table[ws]
+		m, ok := t.Table[ws]
 		if !ok {
 			m = make(map[string] int)
-			t.table[ws] = m
+			t.Table[ws] = m
 		}
 		s := string(md5.Md5(w.buf[:w.blen]))
 		if _, ok := m[s]; !ok {
@@ -99,7 +98,7 @@ func SumTableOf(r io.Reader, l int) *SumTable {
 		}
 	}
 
-	return t
+	return t, nil
 }
 
 func (t *SumTable) Get(buf []byte, blen int) (int, bool) {
@@ -109,7 +108,7 @@ func (t *SumTable) Get(buf []byte, blen int) (int, bool) {
 }
 
 func (t *SumTable) GetWsumBuf(w *WsumBuf) (int, bool) {
-	m, ok := t.table[w.Wsum()]
+	m, ok := t.Table[w.Wsum()]
 	if !ok { return 0, ok }
 	s, ok := m[string(md5.Md5_2(w.buf[w.idx:w.blen], w.buf[:w.idx]))]
 	return s, ok
@@ -125,16 +124,16 @@ type Byterange struct {
 type Delta []interface{}
 
 func (t *SumTable) Delta(f *bufio.Reader) (d Delta, err os.Error) {
-	w := NewWsumBuf(make([]byte, t.blen), 0)
+	w := NewWsumBuf(make([]byte, t.Blen), 0)
 
-	b := make([]byte, 0, t.blen)
+	b := make([]byte, 0, t.Blen)
 	var i int
 	var ok bool
 
  readloop:
 	for {
 		if len(b) != 0 {
-			 b = make([]byte, 0, t.blen)
+			 b = make([]byte, 0, t.Blen)
 		}
 
 		err = w.Fill(f)
@@ -157,7 +156,7 @@ func (t *SumTable) Delta(f *bufio.Reader) (d Delta, err os.Error) {
 		if len(b) != 0 {
 			d = append(d, b)
 		}
-		d = append(d, Byterange{ int64(i) * int64(t.blen), t.blen })
+		d = append(d, Byterange{ int64(i) * int64(t.Blen), t.Blen })
 	}
 
 	if err != os.EOF { return }
@@ -167,7 +166,7 @@ func (t *SumTable) Delta(f *bufio.Reader) (d Delta, err os.Error) {
 	}
 	if w.blen != 0 {
 		if ok {
-			d = append(d, Byterange{ int64(i) * int64(t.blen), w.blen })
+			d = append(d, Byterange{ int64(i) * int64(t.Blen), w.blen })
 		} else {
 			b = append(w.buf[w.idx:w.blen], w.buf[:w.idx]...)
 			d = append(d, b)

@@ -12,8 +12,7 @@
 package fatal
 
 import(
-	"fmt"
-	"os"
+	"log"
 )
 
 type fatal struct {
@@ -30,10 +29,7 @@ func Fail(err interface{}) {
 // in order to make Fail() work
 func HandleFatal() {
 	if err := recover(); err != nil {
-		if f, ok := err.(fatal); ok {
-			fmt.Println(f.err)
-			os.Exit(1)
-		}
+		if f, ok := err.(fatal); ok { log.Fatal(f.err) }
 		panic(err)
 	}
 }
