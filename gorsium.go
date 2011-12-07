@@ -11,7 +11,6 @@ import (
 	"rpc"
 	"gob"
 	"rsync"
-	"fatal"
 )
 
 var debug *bool
@@ -71,7 +70,6 @@ const (
 )
 
 func main() {
-	defer fatal.HandleFatal()
 	gob.Register(rsync.Byterange{})
 
 	flag.Usage = func() {
@@ -94,7 +92,7 @@ func main() {
 
 	log.SetPrefix(args[len(args) - 2] + " ")
 	err := os.Chdir(args[len(args) - 1])
-	if err != nil { fatal.Fail(err) }
+	if err != nil { log.Fatal(err) }
 
 	switch args[len(args) - 2] {
 	case RCV:
@@ -104,7 +102,7 @@ func main() {
 		return
 	case SND:
 	default:
-		fatal.Fail("unkown mode")
+		log.Fatal("unkown mode")
 	}
 
 	args = args[:len(args) - 2]
@@ -135,15 +133,16 @@ func main() {
 
 	remcmd := exec.Command(remcmdargs[0], remcmdargs[1:]...)
 	remin, err := remcmd.StdinPipe()
-	if err != nil { fatal.Fail(err) }
+	if err != nil { log.Fatal(err) }
 	remout, err := remcmd.StdoutPipe()
-	if err != nil { fatal.Fail(err) }
+	if err != nil { log.Fatal(err) }
 	remcmd.Stderr = os.Stderr
 	err = remcmd.Start()
-	if err != nil { fatal.Fail(err) }
+	if err != nil { log.Fatal(err) }
+
 	go func() {
 		err := remcmd.Wait()
-		fatal.Fail(fmt.Sprint("remote end hang up with error", err))
+		log.Fatal(fmt.Sprint("remote end hang up with error ", err))
 	}()
 
 	client := rsync.Client(remout, remin)
@@ -156,7 +155,7 @@ func main() {
 		for {
 			fp, err := r.ReadString(sepchar)
 			if err == os.EOF { break }
-			if err != nil { fatal.Fail(err) }
+			if err != nil { log.Fatal(err) }
 			syncFile(client, fp[:len(fp)-1])
 		}
 	} else {
