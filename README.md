@@ -43,13 +43,13 @@ the procedure is as follows:
 
 - install [Mercurial](http://mercurial.selenic.com)
 - `BASEDIR=$PWD`
-- `hg clone -r release.r60.3 https://go.googlecode.com/hg/ go`
+- `hg clone -u release.r60.3 https://go.googlecode.com/hg/ go`
 - `cd go/src && ./all.bash && cd ../..`
 - `git clone -n git://github.com/skelterjohn/go-gb.git`
 - `cd go-gb && git checkout go.r60.3`
 - `cd gb && PATH=$BASEDIR/go/bin:$PATH gomake && cd ../..`
 - we assume gorsium tree is there in `$BASEDIR`
-- `cd gorsium && PATH=$BASEDIR/go/bin:$PATH $BASEDIR/go-gb/gb/gb`
+- `cd gorsium && $BASEDIR/go-gb/gb/gb`
 
 Trying out
 ----------

@@ -73,7 +73,8 @@ func main() {
 	gob.Register(rsync.Byterange{})
 
 	flag.Usage = func() {
-		fmt.Fprintf(os.Stderr, "%s [options] <remote-cmd> [<file> ...] %s <base>\n", os.Args[0], SND)
+		fmt.Fprintf(os.Stderr, "%s [options] <remote-cmd-with-args> [<file> ...] %s <base>\n", os.Args[0], SND)
+		fmt.Fprintf(os.Stderr, "%s [options] <remote-cmd> [<remote-args> ...] <argsep> [<file> ...] %s <base>\n", os.Args[0], SND)
 		fmt.Fprintf(os.Stderr, "%s [options] %s <base>\n", os.Args[0], RCV)
 		fmt.Fprintln(os.Stderr, "Options can be:")
 		flag.PrintDefaults()
