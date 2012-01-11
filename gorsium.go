@@ -13,23 +13,26 @@ import (
 	"rsync"
 )
 
-var debug *bool
+var debug, zerosep *bool
 
 func syncFile(cli *rpc.Client, file string) {
 	var t *rsync.SumTable
 
 	err := cli.Call("Server.Sumtable", file, &t)
 	defer func() {
-		var stat interface {}
-		if err == nil {
-			stat = "OK"
+		if *zerosep {
+			errs := ""
+			if err != nil { errs = fmt.Sprint(err) }
+			os.Stdout.Write([]byte(file + "\x00" + errs + "\x00"))
 		} else {
-			stat = err
+			var stat interface {}
+			if err == nil {
+				stat = "OK."
+			} else {
+				stat = err
+			}
+			fmt.Println(file + ":", stat)
 		}
-		// XXX to make output parsing possible,
-		// we should make sure error is printed
-		// as single line
-		fmt.Println(file + ":", stat)
 	}()
 	if err != nil { return }
 
@@ -80,7 +83,7 @@ func main() {
 		flag.PrintDefaults()
 	}
 	blocksize := flag.Int("blocksize", 4096, "blocksize used in rsync algorithm")
-	zerosep := flag.Bool("0", false, "separate file names read on stdin by zero byte")
+	zerosep = flag.Bool("0", false, "separate file names by zero byte")
 	argsep := flag.String("argsep", "--", "string to separate remote command from file args")
 	debug = flag.Bool("debug", false, "debug mode")
 	flag.Parse()
