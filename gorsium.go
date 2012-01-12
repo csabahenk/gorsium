@@ -10,6 +10,7 @@ import (
 	"exec"
 	"rpc"
 	"gob"
+	"sync"
 	"rsync"
 )
 
@@ -151,6 +152,15 @@ func main() {
 
 	client := rsync.Client(remout, remin)
 
+	var wg sync.WaitGroup
+	syncFile_bg := func(cli *rpc.Client, file string) {
+		wg.Add(1)
+		go func() {
+			syncFile(cli, file)
+			wg.Done()
+		}()
+	}
+
 	if len(files) == 0 {
 		var sepchar byte
 		sepchar = '\n'
@@ -160,9 +170,11 @@ func main() {
 			fp, err := r.ReadString(sepchar)
 			if err == os.EOF { break }
 			if err != nil { log.Fatal(err) }
-			syncFile(client, fp[:len(fp)-1])
+			syncFile_bg(client, fp[:len(fp)-1])
 		}
 	} else {
-		for _, fp := range(files) { syncFile(client, fp) }
+		for _, fp := range(files) { syncFile_bg(client, fp) }
 	}
+
+	wg.Wait()
 }
