@@ -118,6 +118,9 @@ func (s *Server) Patch(pa *PatchArg, x *interface{}) os.Error {
 	}()
 
 	tdir, tname := path.Split(pa.Basep)
+	if tdir == "" {
+		tdir = "."
+	}
 	tgtf, err := ioutil.TempFile(tdir, tname + ".")
 	if err != nil { return err }
 	defer tgtf.Close()
