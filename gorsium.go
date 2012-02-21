@@ -2,16 +2,17 @@ package main
 
 import (
 	"bufio"
-	"os"
+	"encoding/gob"
 	"flag"
 	"fmt"
+	"io"
 	"log"
-	"strings"
-	"exec"
-	"rpc"
-	"gob"
-	"sync"
+	"net/rpc"
+	"os"
+	"os/exec"
 	"rsync"
+	"strings"
+	"sync"
 )
 
 var debug, zerosep *bool
@@ -23,27 +24,35 @@ func syncFile(cli *rpc.Client, file string) {
 	defer func() {
 		if *zerosep {
 			errs := ""
-			if err != nil { errs = fmt.Sprint(err) }
+			if err != nil {
+				errs = fmt.Sprint(err)
+			}
 			os.Stdout.Write([]byte(file + "\x00" + errs + "\x00"))
 		} else {
-			var stat interface {}
+			var stat interface{}
 			if err == nil {
 				stat = "OK."
 			} else {
 				stat = err
 			}
-			fmt.Println(file + ":", stat)
+			fmt.Println(file+":", stat)
 		}
 	}()
-	if err != nil { return }
+	if err != nil {
+		return
+	}
 
 	srcf0, err := os.Open(file)
-	if err != nil { return }
+	if err != nil {
+		return
+	}
 	d, err := t.Delta(bufio.NewReader(srcf0))
-	if err != nil { return }
+	if err != nil {
+		return
+	}
 
-	if (*debug) {
-		fmt.Fprintln(os.Stderr, file + ":")
+	if *debug {
+		fmt.Fprintln(os.Stderr, file+":")
 		for _, e := range d {
 			switch et := e.(type) {
 			case rsync.Byterange:
@@ -58,14 +67,16 @@ func syncFile(cli *rpc.Client, file string) {
 	}
 
 	fi, err := srcf0.Stat()
-	if err != nil { return }
-	var x interface {}
+	if err != nil {
+		return
+	}
+	var x interface{}
 	err = cli.Call("Server.Patch",
-	               &rsync.PatchArg{Basep: file,
-	                               Delta: d,
-	                               Uid: fi.Uid, Gid: fi.Gid,
-	                               Permission: fi.Permission()},
-	               &x)
+		&rsync.PatchArg{Basep: file,
+			Delta: d,
+			Uid:   fi.Uid, Gid: fi.Gid,
+			Permission: fi.Permission()},
+		&x)
 }
 
 const (
@@ -95,11 +106,13 @@ func main() {
 		os.Exit(2)
 	}
 
-	log.SetPrefix(args[len(args) - 2] + " ")
-	err := os.Chdir(args[len(args) - 1])
-	if err != nil { log.Fatal(err) }
+	log.SetPrefix(args[len(args)-2] + " ")
+	err := os.Chdir(args[len(args)-1])
+	if err != nil {
+		log.Fatal(err)
+	}
 
-	switch args[len(args) - 2] {
+	switch args[len(args)-2] {
 	case RCV:
 		rpc.Register(rsync.NewServer(*blocksize))
 		rsync.Serve(os.Stdin, os.Stdout)
@@ -110,7 +123,7 @@ func main() {
 		log.Fatal("unkown mode")
 	}
 
-	args = args[:len(args) - 2]
+	args = args[:len(args)-2]
 	if len(args) < 1 {
 		flag.Usage()
 		os.Exit(2)
@@ -128,7 +141,7 @@ func main() {
 	if remcmdargs == nil {
 		remcmdargs0 := strings.Split(args[0], " ")
 		//collapse entries coming from subsequent spaces
-		for _, a := range(remcmdargs0) {
+		for _, a := range remcmdargs0 {
 			if len(a) != 0 {
 				remcmdargs = append(remcmdargs, a)
 			}
@@ -138,12 +151,18 @@ func main() {
 
 	remcmd := exec.Command(remcmdargs[0], remcmdargs[1:]...)
 	remin, err := remcmd.StdinPipe()
-	if err != nil { log.Fatal(err) }
+	if err != nil {
+		log.Fatal(err)
+	}
 	remout, err := remcmd.StdoutPipe()
-	if err != nil { log.Fatal(err) }
+	if err != nil {
+		log.Fatal(err)
+	}
 	remcmd.Stderr = os.Stderr
 	err = remcmd.Start()
-	if err != nil { log.Fatal(err) }
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	go func() {
 		err := remcmd.Wait()
@@ -164,16 +183,24 @@ func main() {
 	if len(files) == 0 {
 		var sepchar byte
 		sepchar = '\n'
-		if *zerosep { sepchar = '\x00' }
+		if *zerosep {
+			sepchar = '\x00'
+		}
 		r := bufio.NewReader(os.Stdin)
 		for {
 			fp, err := r.ReadString(sepchar)
-			if err == os.EOF { break }
-			if err != nil { log.Fatal(err) }
+			if err == io.EOF {
+				break
+			}
+			if err != nil {
+				log.Fatal(err)
+			}
 			syncFile_bg(client, fp[:len(fp)-1])
 		}
 	} else {
-		for _, fp := range(files) { syncFile_bg(client, fp) }
+		for _, fp := range files {
+			syncFile_bg(client, fp)
+		}
 	}
 
 	wg.Wait()
