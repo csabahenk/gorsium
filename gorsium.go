@@ -10,9 +10,10 @@ import (
 	"net/rpc"
 	"os"
 	"os/exec"
-	"rsync"
 	"strings"
 	"sync"
+	"syscall"
+	"rsync"
 )
 
 var debug, zerosep *bool
@@ -71,11 +72,12 @@ func syncFile(cli *rpc.Client, file string) {
 		return
 	}
 	var x interface{}
+	fisys := fi.Sys().(*syscall.Stat_t)
 	err = cli.Call("Server.Patch",
 		&rsync.PatchArg{Basep: file,
 			Delta: d,
-			Uid:   fi.Uid, Gid: fi.Gid,
-			Permission: fi.Permission()},
+			Uid: int(fisys.Uid), Gid: int(fisys.Gid),
+			Permission: os.FileMode(fisys.Mode).Perm()},
 		&x)
 }
 

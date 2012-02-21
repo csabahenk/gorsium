@@ -8,6 +8,7 @@ import (
 	"net/rpc"
 	"os"
 	"path"
+	"syscall"
 )
 
 // pipe pair based rpc
@@ -92,8 +93,8 @@ func (s *Server) Sumtable(pname string, tp **SumTable) error {
 	var f io.Reader
 	f0, err := os.Open(pname)
 	if err == nil {
-		f, err = bufio.NewReaderSize(f0, s.blocksize)
-	} else if perr, ok := err.(*os.PathError); ok && perr.Err == os.ENOENT {
+		f = bufio.NewReaderSize(f0, s.blocksize)
+	} else if perr, ok := err.(*os.PathError); ok && perr.Err == syscall.ENOENT {
 		f0 = nil
 		err = nil
 	}
@@ -115,7 +116,7 @@ type PatchArg struct {
 	Basep      string
 	Delta      Delta
 	Uid, Gid   int
-	Permission uint32
+	Permission os.FileMode
 }
 
 func (s *Server) Patch(pa *PatchArg, x *interface{}) error {
