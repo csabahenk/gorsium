@@ -37,19 +37,14 @@ built-in concurrency support.
 Compilation
 -----------
 
-The code relies on Go (of course), and [Go-gb](http://code.google.com/p/go-gb/) as the
-build system. If you start from scratch, without having any of this infrastructure,
-the procedure is as follows:
+`go install <reponame>` does not yet work.  You can build locally by
 
-- install [Mercurial](http://mercurial.selenic.com)
-- `BASEDIR=$PWD`
-- `hg clone -u release.r60.3 https://go.googlecode.com/hg/ go`
-- `cd go/src && ./all.bash && cd ../..`
-- `git clone -n git://github.com/skelterjohn/go-gb.git`
-- `cd go-gb && git checkout go.r60.3`
-- `cd gb && PATH=$BASEDIR/go/bin:$PATH gomake && cd ../..`
-- we assume gorsium tree is there in `$BASEDIR`
-- `cd gorsium && $BASEDIR/go-gb/gb/gb`
+```
+mkdir GOROOT
+cd GOROOT
+ln -s .. src
+GOPATH=$PWD go build gorsium
+```
 
 Trying out
 ----------

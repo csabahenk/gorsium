@@ -1,8 +1,8 @@
 package md5
 
-// #include <compat.h>
-// #include <mdigest.h>
-// #include <md5_2.h>
+// #include "compat.h"
+// #include "mdigest.h"
+// #include "md5_2.h"
 import "C"
 import "unsafe"
 import "reflect"
